@@ -8,6 +8,14 @@ env/
 venv/
 ENV/
 
+# PyInstaller
+build/
+dist/
+releases/
+*.spec.bak
+*.exe
+*.app
+
 # Analyzer output
 data/
 visualizations/

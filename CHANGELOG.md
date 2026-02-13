@@ -25,6 +25,11 @@ All notable changes to Victoria 3 Economic Analyzer will be documented in this f
   - One-click monitoring
 - CLI application with interactive menu
 - Command-line options for advanced users
+- **Standalone executable support** 🆕
+  - Build scripts for creating .exe (Windows) / executables (Linux/Mac)
+  - No Python installation required for end users
+  - `build_exe.bat` / `build_exe.sh` for easy building
+  - PyInstaller configuration included
 - Comprehensive documentation
 - Example scripts for custom analysis
 - Windows batch launchers

@@ -17,11 +17,33 @@ Real-time save game monitoring and economic analysis tool for Victoria 3. Perfec
 
 ## 📥 Installation
 
-### Prerequisites
+### Option A: Standalone Executable (Easiest!)
+
+**No Python installation required!** Perfect for non-technical users.
+
+**Windows:**
+1. Download `Vic3_Analyzer.exe` from [Releases](../../releases)
+2. Double-click to run
+3. That's it!
+
+**Building it yourself:**
+```bash
+build_exe.bat  # Creates standalone .exe
+```
+
+See [BUILD.md](docs/BUILD.md) for detailed instructions.
+
+**File size:** ~50-100 MB (includes Python + all dependencies)
+
+---
+
+### Option B: Python Source (For Developers)
+
+**Prerequisites:**
 - Python 3.8 or higher
 - Windows (fully tested) / Linux / macOS (should work)
 
-### Quick Setup
+**Quick Setup:**
 
 1. **Clone or download** this repository
 
@@ -327,7 +349,9 @@ For your mod specifically:
 Detailed guides for different users:
 
 - **[Quick Start Guide](docs/QUICKSTART.md)** - Get running in 5 minutes
-- **[GUI User Guide](docs/GUI_GUIDE.md)** - Complete button-by-button walkthrough  
+- **[GUI User Guide](docs/GUI_GUIDE.md)** - Complete button-by-button walkthrough
+- **[Building Executables](docs/BUILD.md)** - Create standalone .exe with no Python needed
+- **[Distribution Guide](docs/DISTRIBUTION.md)** - Choose between .exe and source
 - **[For TGR Team](docs/FOR_TGR_TEAM.md)** - Team-specific workflow and testing guide
 - **[Contributing](CONTRIBUTING.md)** - How to contribute to this project
 - **[Changelog](CHANGELOG.md)** - Version history and planned features
