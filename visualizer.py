@@ -33,32 +33,65 @@ class EconomicVisualizer:
         
         # Extract time series data
         game_days = []
-        prices = {goods: [] for goods in (goods_list or [])}
-        
-        for data_point in playthrough_data:
+        for idx, data_point in enumerate(playthrough_data):
             metadata = data_point.get('metadata', {})
-            game_day = metadata.get('game_day', 0)
+            game_day = metadata.get('game_day')
+            if game_day is None:
+                game_day = idx
             game_days.append(game_day)
-            
+
+        # Build a complete per-goods series across all data points.
+        all_goods = sorted({
+            goods_name
+            for data_point in playthrough_data
+            for goods_name in data_point.get('goods_economy', {}).keys()
+        })
+        discovered_prices = {goods_name: [] for goods_name in all_goods}
+
+        for data_point in playthrough_data:
             goods_economy = data_point.get('goods_economy', {})
-            
-            for goods in prices.keys():
-                if goods in goods_economy:
-                    prices[goods].append(goods_economy[goods].get('price', 0))
-                else:
-                    prices[goods].append(0)
+            for goods_name in all_goods:
+                goods_data = goods_economy.get(goods_name, {})
+                discovered_prices[goods_name].append(self._extract_price(goods_data))
+
+        # Default behavior: plot all detected goods with real price data.
+        if goods_list is None:
+            prices = {
+                goods_name: series
+                for goods_name, series in discovered_prices.items()
+                if any(p > 0 for p in series)
+            }
+        else:
+            prices = {}
+            for goods_name in goods_list:
+                series = discovered_prices.get(goods_name, [0.0] * len(playthrough_data))
+                prices[goods_name] = series
+
+            has_requested_data = any(any(p > 0 for p in series) for series in prices.values())
+            if not has_requested_data:
+                prices = {
+                    goods_name: series
+                    for goods_name, series in discovered_prices.items()
+                    if any(p > 0 for p in series)
+                }
+                if prices:
+                    print("Requested key goods missing; using all detected goods from data instead.")
+
+        if not prices:
+            print("No goods price data found to plot")
+            return
         
         # Create plot
         fig, ax = plt.subplots(figsize=(14, 8))
         
         for goods, price_list in prices.items():
-            if any(price_list):  # Only plot if we have data
+            if any(p > 0 for p in price_list):  # Only plot if we have data
                 ax.plot(game_days, price_list, marker='o', label=goods, linewidth=2)
         
         ax.set_xlabel('Game Day', fontsize=12)
         ax.set_ylabel('Price', fontsize=12)
         ax.set_title(f'Goods Prices Over Time - {playthrough_name}', fontsize=14, fontweight='bold')
-        ax.legend(loc='best', fontsize=10)
+        ax.legend(loc='best', fontsize=9)
         ax.grid(True, alpha=0.3)
         
         # Save
@@ -67,6 +100,19 @@ class EconomicVisualizer:
         plt.savefig(filename, dpi=150, bbox_inches='tight')
         print(f"Saved: {filename}")
         plt.close()
+
+    @staticmethod
+    def _extract_price(goods_data):
+        """Extract numeric price value from goods record shape."""
+        if isinstance(goods_data, dict):
+            value = goods_data.get('price', 0)
+        else:
+            value = goods_data
+
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
     
     def plot_price_crashes(self, playthrough_data: List[Dict], 
                           playthrough_name: str = "default"):
@@ -305,11 +351,12 @@ class EconomicVisualizer:
         """Generate all standard visualizations"""
         print(f"\nGenerating visualizations for: {playthrough_name}")
         print("=" * 60)
-        
+
         if key_goods is None:
-            key_goods = ['grain', 'iron', 'coal', 'steel', 'tools', 'fabric', 
-                        'clothes', 'furniture', 'transportation']
-        
+            print("Plotting prices for all detected goods")
+        else:
+            print(f"Plotting prices for selected goods: {len(key_goods)}")
+
         self.plot_goods_prices_over_time(playthrough_data, key_goods, playthrough_name)
         self.plot_price_crashes(playthrough_data, playthrough_name)
         self.plot_overproduction_heatmap(playthrough_data, playthrough_name)

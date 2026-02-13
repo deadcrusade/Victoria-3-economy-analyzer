@@ -75,15 +75,16 @@ class EconomicExtractor:
         goods_data = {}
         
         # Extract prices from market packages
-        # Format: goods = "goods_name" price = value
-        price_pattern = r'goods\s*=\s*"?([a-z_]+)"?\s+[^}]*?price\s*=\s*([\d.]+)'
+        # Format: goods = "goods_name" ... price = value
+        # Keep this strict pass first, then fallback to a wider pass if needed.
+        price_pattern = r'goods\s*=\s*"?([a-z_]+)"?\s+[^}]*?price\s*=\s*([-\d.]+)'
         for goods_name, price in re.findall(price_pattern, self.raw_content):
             if goods_name not in goods_data:
                 goods_data[goods_name] = {}
             goods_data[goods_name]['price'] = float(price)
         
         # Extract buy/sell volumes (simplified)
-        buy_pattern = r'goods\s*=\s*"?([a-z_]+)"?\s+[^}]*?quantity\s*=\s*([\d.]+)[^}]*?price\s*=\s*([\d.]+)'
+        buy_pattern = r'goods\s*=\s*"?([a-z_]+)"?\s+[^}]*?quantity\s*=\s*([-\d.]+)[^}]*?price\s*=\s*([-\d.]+)'
         for goods_name, quantity, price in re.findall(buy_pattern, self.raw_content):
             if goods_name not in goods_data:
                 goods_data[goods_name] = {}
@@ -92,6 +93,26 @@ class EconomicExtractor:
             if 'buy_volume' not in goods_data[goods_name]:
                 goods_data[goods_name]['buy_volume'] = 0
             goods_data[goods_name]['buy_volume'] += float(quantity)
+
+            # Ensure price is still captured even when strict price pass missed it
+            if 'price' not in goods_data[goods_name]:
+                goods_data[goods_name]['price'] = float(price)
+
+        # Fallback extraction for saves where formatting breaks strict regex assumptions.
+        # Scan from each goods declaration and look ahead a short window.
+        if not any(v.get('price', 0) > 0 for v in goods_data.values()):
+            goods_decl = re.finditer(r'goods\s*=\s*"?([a-z_]+)"?', self.raw_content)
+            for match in goods_decl:
+                goods_name = match.group(1)
+                snippet = self.raw_content[match.end():match.end() + 400]
+
+                price_match = re.search(r'\bprice\s*=\s*([-\d.]+)', snippet)
+                if not price_match:
+                    continue
+
+                if goods_name not in goods_data:
+                    goods_data[goods_name] = {}
+                goods_data[goods_name]['price'] = float(price_match.group(1))
         
         return goods_data
     

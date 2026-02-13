@@ -398,11 +398,8 @@ class AnalyzerGUI:
                 continue
             
             self.output_queue.put(("log", f"\nGenerating charts for: {playthrough_id}"))
-            
-            key_goods = ['grain', 'iron', 'coal', 'steel', 'tools', 'fabric', 
-                        'clothes', 'furniture', 'transportation']
-            
-            self.visualizer.generate_all_visualizations(data, playthrough_id, key_goods)
+
+            self.visualizer.generate_all_visualizations(data, playthrough_id)
             self.output_queue.put(("log", f"✓ Charts saved for {playthrough_id}"))
         
         # Generate comparison if multiple playthroughs
