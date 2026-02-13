@@ -5,6 +5,7 @@ Watches save game directory and processes new saves
 
 import time
 import json
+import re
 from pathlib import Path
 from typing import Dict, List, Set
 from datetime import datetime
@@ -55,17 +56,26 @@ class SaveMonitor:
     def identify_playthrough(self, save_file: Path) -> str:
         """Identify which playthrough a save belongs to"""
         # Use the base name without date/time suffixes
-        # e.g., "campaign_autosave_2024_02_13.v3" -> "campaign"
+        # e.g., "Belgium_1850_5_1_autosave.v3" -> "Belgium"
         name = save_file.stem
         
-        # Remove common suffixes
-        for suffix in ['_autosave', '_backup']:
+        # Remove common suffixes (case insensitive)
+        for suffix in ['_autosave', '_backup', '_Autosave', '_Backup', 'autosave', 'backup']:
             name = name.replace(suffix, '')
         
-        # Remove dates (YYYY_MM_DD or YYYY.MM.DD)
-        name = name.split('_20')[0]  # Assumes saves are from 2000+
+        # Remove all date patterns: _YYYY_MM_DD or _YYYY_M_D
+        # Remove patterns like _1850_5_1 or _2024_12_25
+        name = re.sub(r'_\d{4}_\d{1,2}_\d{1,2}', '', name)
+        # Remove patterns like _1850 or _20XX (year only)
+        name = re.sub(r'_\d{4}', '', name)
+        # Remove trailing numbers like _1, _2, _3
+        name = re.sub(r'_\d+$', '', name)
         
-        return name if name else "default"
+        # Clean up any double underscores or trailing underscores
+        name = re.sub(r'_+', '_', name).strip('_')
+        
+        # If nothing left, use "campaign" as default
+        return name if name else "campaign"
     
     def process_new_saves(self, callback):
         """Process any new save files"""
