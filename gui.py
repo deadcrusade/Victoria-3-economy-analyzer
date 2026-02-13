@@ -48,7 +48,6 @@ class AnalyzerGUI:
     def _get_default_save_dir(self):
         """Try to find default Victoria 3 save directory"""
         if os.name == 'nt':  # Windows
-            import os
             user_profile = os.environ.get('USERPROFILE', '')
             save_dir = os.path.join(
                 user_profile, 
