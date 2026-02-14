@@ -4,8 +4,19 @@ Extracts and calculates economic metrics from parsed save data
 """
 
 import re
-from typing import Dict, List, Any
 from pathlib import Path
+from typing import Any, Dict, List
+
+from vic3_native_parser import (
+    BinarySaveParseError,
+    ParserRuntimeUnavailableError,
+    is_binary_save_file,
+    parse_vic3_save,
+)
+
+
+class UnsupportedSaveFormatError(BinarySaveParseError):
+    """Deprecated compatibility alias. Use BinarySaveParseError instead."""
 
 
 class EconomicExtractor:
@@ -20,18 +31,82 @@ class EconomicExtractor:
         'transportation', 'electricity', 'telecommunications',  # Infrastructure
         'glass', 'porcelain', 'services', 'luxury_goods',  # Luxury/Services
     ]
+
+    _GOODS_INDEX_MAP = {
+        0: "ammunition",
+        1: "small_arms",
+        2: "artillery",
+        3: "manowars",
+        4: "ironclads",
+        5: "grain",
+        6: "fish",
+        7: "fabric",
+        8: "wood",
+        9: "coal",
+        10: "iron",
+        11: "tools",
+        12: "sulfur",
+        13: "steel",
+        14: "engines",
+        15: "glass",
+        16: "lead",
+        17: "hardwood",
+        18: "paper",
+        19: "clothes",
+        20: "services",
+        21: "electricity",
+        22: "transportation",
+        23: "luxury_clothes",
+        24: "luxury_furniture",
+        25: "furniture",
+        26: "porcelain",
+        27: "groceries",
+        28: "fruit",
+        29: "liquor",
+        30: "wine",
+        31: "meat",
+        32: "sugar",
+        33: "tea",
+        34: "coffee",
+        35: "silk",
+        36: "dye",
+        37: "opium",
+        38: "oil",
+        39: "rubber",
+        40: "gold",
+        41: "fine_art",
+        42: "radios",
+        43: "automobiles",
+        44: "aeroplanes",
+        45: "telephones",
+        46: "fertilizer",
+        47: "explosives",
+        48: "steamers",
+        49: "electric_gear",
+        50: "tank",
+    }
     
     def __init__(self, save_path: str):
         self.save_path = Path(save_path)
         self.raw_content = ""
+        self.raw_meta_content = ""
         
     def extract_all(self) -> Dict[str, Any]:
         """Extract all economic data from save file"""
         print(f"Extracting economic data from: {self.save_path.name}")
-        
-        # Read file
-        with open(self.save_path, 'r', encoding='utf-8', errors='ignore') as f:
-            self.raw_content = f.read()
+
+        parse_backend = "regex_text"
+        binary_result = None
+
+        if self._is_binary_save():
+            binary_result = parse_vic3_save(self.save_path)
+            self.raw_content = binary_result.melted_text
+            self.raw_meta_content = binary_result.meta_text or ""
+            parse_backend = "librakaly"
+        else:
+            with open(self.save_path, "r", encoding="utf-8", errors="ignore") as f:
+                self.raw_content = f.read()
+            self.raw_meta_content = ""
         
         data = {
             'metadata': self._extract_metadata(),
@@ -46,15 +121,33 @@ class EconomicExtractor:
         # Calculate derived metrics
         data['overproduction_ratio'] = self._calculate_overproduction(data)
         data['price_crashes'] = self._identify_price_crashes(data)
+
+        metadata = data.setdefault("metadata", {})
+        metadata["parse_backend"] = parse_backend
+
+        if binary_result is not None:
+            metadata["save_format"] = "binary" if binary_result.is_binary else "text"
+            metadata["unknown_tokens"] = bool(binary_result.unknown_tokens)
+            metadata["parser_runtime_version"] = binary_result.runtime_version
         
         return data
+
+    def _is_binary_save(self) -> bool:
+        """Return True if save is a binary container handled by native parser."""
+        return is_binary_save_file(self.save_path)
     
     def _extract_metadata(self) -> Dict:
         """Extract save file metadata"""
         metadata = {}
-        
-        # Date
-        date_match = re.search(r'current_date\s*=\s*"?(\d{4}\.\d{1,2}\.\d{1,2})"?', self.raw_content)
+
+        # Date (prefer full melted gamestate, fallback to melted metadata)
+        date_match = re.search(
+            r'(?:current_date|game_date)\s*=\s*"?(\d{4}\.\d{1,2}\.\d{1,2})"?', self.raw_content
+        )
+        if not date_match and self.raw_meta_content:
+            date_match = re.search(
+                r'(?:current_date|game_date)\s*=\s*"?(\d{4}\.\d{1,2}\.\d{1,2})"?', self.raw_meta_content
+            )
         if date_match:
             metadata['date'] = date_match.group(1)
             # Convert to days for easier tracking
@@ -63,6 +156,8 @@ class EconomicExtractor:
         
         # Game version
         version_match = re.search(r'version\s*=\s*"([^"]+)"', self.raw_content)
+        if not version_match and self.raw_meta_content:
+            version_match = re.search(r'version\s*=\s*"([^"]+)"', self.raw_meta_content)
         if version_match:
             metadata['game_version'] = version_match.group(1)
         
@@ -113,8 +208,69 @@ class EconomicExtractor:
                 if goods_name not in goods_data:
                     goods_data[goods_name] = {}
                 goods_data[goods_name]['price'] = float(price_match.group(1))
+
+        # Native melted Vic3 saves often expose market price reports keyed by goods index.
+        if not any(v.get('price', 0) > 0 for v in goods_data.values()):
+            indexed_goods = self._extract_indexed_goods_prices()
+            for goods_name, price in indexed_goods.items():
+                if goods_name not in goods_data:
+                    goods_data[goods_name] = {}
+                goods_data[goods_name]["price"] = price
         
         return goods_data
+
+    def _extract_indexed_goods_prices(self) -> Dict[str, float]:
+        """
+        Extract average goods prices from index-based `current_price_report` blocks.
+        Falls back to synthetic names if goods index mapping is unknown.
+        """
+        pattern = re.compile(
+            r'(?m)^\s*(\d+)\s*=\s*\{\s*\n\s*value\s*=\s*([-\d.]+)\s*\n\s*prestige_goods\s*=\s*\{'
+        )
+
+        # Track report context so we only aggregate from market price report sections.
+        report_anchor = "current_price_report={"
+        report_positions = []
+        start = 0
+        while True:
+            idx = self.raw_content.find(report_anchor, start)
+            if idx < 0:
+                break
+            report_positions.append(idx)
+            start = idx + len(report_anchor)
+
+        if not report_positions:
+            return {}
+
+        values_by_index: Dict[int, List[float]] = {}
+        report_idx = 0
+
+        for match in pattern.finditer(self.raw_content):
+            pos = match.start()
+            if pos < report_positions[0]:
+                continue
+
+            while report_idx + 1 < len(report_positions) and report_positions[report_idx + 1] <= pos:
+                report_idx += 1
+
+            nearest_report = report_positions[report_idx]
+            if pos < nearest_report:
+                continue
+            if pos - nearest_report > 12000:
+                continue
+
+            goods_index = int(match.group(1))
+            value = float(match.group(2))
+            values_by_index.setdefault(goods_index, []).append(value)
+
+        goods_prices: Dict[str, float] = {}
+        for goods_index, samples in values_by_index.items():
+            if not samples:
+                continue
+            goods_name = self._GOODS_INDEX_MAP.get(goods_index, f"goods_{goods_index}")
+            goods_prices[goods_name] = sum(samples) / len(samples)
+
+        return goods_prices
     
     def _extract_market_stockpiles(self) -> Dict[str, float]:
         """Extract stockpiled goods in markets"""

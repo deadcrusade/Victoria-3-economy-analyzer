@@ -33,9 +33,12 @@ REM Build the executable
 python -m PyInstaller --clean --onefile --windowed --name "Vic3_Analyzer" ^
     --icon=NONE ^
     --add-data "docs;docs" ^
+    --add-data "vendor;vendor" ^
     --hidden-import=matplotlib ^
     --hidden-import=numpy ^
     --hidden-import=PIL ^
+    --hidden-import=watchdog ^
+    --hidden-import=watchdog.observers.winapi ^
     gui.py
 
 if errorlevel 1 (

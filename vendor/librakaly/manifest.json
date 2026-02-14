@@ -1,0 +1,12 @@
+{
+  "name": "librakaly",
+  "version": "0.12.5",
+  "platform": "win-x64",
+  "architecture": "x86_64",
+  "library_filename": "rakaly.dll",
+  "relative_library_path": "vendor/librakaly/win-x64/rakaly.dll",
+  "header_filename": "rakaly.h",
+  "sha256": "8C8BBFA33A46880CAF0BF7A7220336BC75D30862414FAB83B0172CFF8DFCEF97",
+  "release_url": "https://github.com/rakaly/librakaly/releases/tag/v0.12.5",
+  "source_repo": "https://github.com/rakaly/librakaly"
+}

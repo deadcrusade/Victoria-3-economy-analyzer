@@ -14,7 +14,11 @@ import queue
 # Add current directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from data_extractor import EconomicExtractor
+from data_extractor import (
+    BinarySaveParseError,
+    EconomicExtractor,
+    ParserRuntimeUnavailableError,
+)
 from save_monitor import SaveMonitor
 from visualizer import EconomicVisualizer
 
@@ -246,30 +250,95 @@ class AnalyzerGUI:
         
         if not self.visualizer:
             self.visualizer = EconomicVisualizer(output_dir="./visualizations")
+
+    def _format_run_stats(self):
+        """Format monitor counters for console output."""
+        if not self.monitor:
+            return (
+                "Processed 0, captured 0, skipped duplicates 0, event duplicates 0, "
+                "unsupported format 0, errors 0, queue backlog events 0 processing 0"
+            )
+
+        stats = self.monitor.get_run_stats_snapshot()
+        backlog = self.monitor.get_queue_backlog_snapshot()
+        return (
+            f"Processed {stats.get('processed', 0)}, "
+            f"captured {stats.get('captured', 0)}, "
+            f"skipped duplicates {stats.get('duplicate_skipped', 0)}, "
+            f"event duplicates {stats.get('event_duplicate_skipped', 0)}, "
+            f"unsupported format {stats.get('unsupported_format', 0)}, "
+            f"errors {stats.get('error', 0)}, "
+            f"queue backlog events {backlog.get('event_queue', 0)} "
+            f"processing {backlog.get('process_queue', 0)}"
+        )
+
+    @staticmethod
+    def _build_low_quality_warning(playthrough_id, data):
+        """Return warning text when loaded data quality looks poor."""
+        if not data:
+            return None
+
+        total = len(data)
+        save_date_points = 0
+        non_empty_goods_points = 0
+
+        for data_point in data:
+            metadata = data_point.get("metadata", {})
+            if metadata.get("timeline_source") == "save_date":
+                save_date_points += 1
+
+            goods_economy = data_point.get("goods_economy", {})
+            if isinstance(goods_economy, dict) and goods_economy:
+                non_empty_goods_points += 1
+
+        threshold = max(1, int(total * 0.5))
+        if save_date_points < threshold or non_empty_goods_points < threshold:
+            return (
+                f"Warning: {playthrough_id} has low-quality historical data "
+                f"(save-date points {save_date_points}/{total}, "
+                f"goods snapshots {non_empty_goods_points}/{total}). "
+                "Legacy malformed points may remain from older parser behavior; "
+                "use Reset Data and re-track for clean charts."
+            )
+
+        return None
     
     def _process_save_callback(self, save_file, playthrough_id):
         """Callback for processing saves"""
+        self.output_queue.put(("log", f"Processing: {save_file.name}"))
+
         try:
-            self._log(f"Processing: {save_file.name}")
-            
             extractor = EconomicExtractor(str(save_file))
             data = extractor.extract_all()
-            
-            # Log summary
+
             crashes = len(data.get('price_crashes', []))
             overproduction = len(data.get('overproduction_ratio', {}))
             date = data.get('metadata', {}).get('date', 'Unknown')
-            
-            self._log(f"  Date: {date}")
-            self._log(f"  Price crashes: {crashes}")
-            self._log(f"  Overproduction issues: {overproduction}")
-            self._log("-" * 60)
-            
+
+            self.output_queue.put(("log", f"  Date: {date}"))
+            self.output_queue.put(("log", f"  Price crashes: {crashes}"))
+            self.output_queue.put(("log", f"  Overproduction issues: {overproduction}"))
+            self.output_queue.put(("log", "-" * 60))
+
             return data
-            
+
+        except ParserRuntimeUnavailableError as e:
+            self.output_queue.put(("log", f"Native parser runtime unavailable ({save_file.name}): {e}"))
+            self.output_queue.put((
+                "log",
+                "Action: reinstall/update analyzer build to restore bundled parser runtime."
+            ))
+            raise
+        except BinarySaveParseError as e:
+            self.output_queue.put(("log", f"Save parse failed ({save_file.name}): {e}"))
+            self.output_queue.put((
+                "log",
+                "Action: save skipped; monitoring continues for next autosave."
+            ))
+            raise
         except Exception as e:
-            self._log(f"Error processing {save_file.name}: {e}")
-            return None
+            self.output_queue.put(("log", f"Error processing {save_file.name}: {e}"))
+            raise
     
     def _analyze_saves(self):
         """Analyze all existing saves"""
@@ -284,9 +353,15 @@ class AnalyzerGUI:
             try:
                 self._initialize_components()
                 count = self.monitor.process_new_saves(self._process_save_callback)
-                
-                self.output_queue.put(("status", f"Processed {count} saves", "green"))
+
+                stats = self.monitor.get_run_stats_snapshot()
+                status_color = "green"
+                if stats.get("unsupported_format", 0) > 0 or stats.get("error", 0) > 0:
+                    status_color = "orange"
+
+                self.output_queue.put(("status", f"Processed {count} saves", status_color))
                 self.output_queue.put(("log", f"\nProcessed {count} save files"))
+                self.output_queue.put(("log", f"Run summary: {self._format_run_stats()}"))
                 
                 if count > 0:
                     self.output_queue.put(("log", "Generating visualizations..."))
@@ -317,39 +392,30 @@ class AnalyzerGUI:
         self.monitor_btn.config(text="⏸️ Stop Monitoring")
         self._set_status("Monitoring for new saves...", "blue")
         self._log("\n[Starting Real-Time Monitoring]")
-        self._log("Checking for new saves every 60 seconds")
+        self._log("Watching folder continuously for save changes")
+        self._log("Capturing save snapshots and processing sequentially")
         self._log("Click 'Stop Monitoring' to stop and generate visualizations")
         self._log("=" * 80)
         
-        def monitor_loop():
-            self._initialize_components()
-            
-            while self.monitoring:
-                try:
-                    count = self.monitor.process_new_saves(self._process_save_callback)
-                    
-                    if count > 0:
-                        self.output_queue.put(("log", f"\n✓ Processed {count} new save(s)"))
-                    
-                    # Sleep in small chunks to allow stopping
-                    for _ in range(60):
-                        if not self.monitoring:
-                            break
-                        import time
-                        time.sleep(1)
-                        
-                except Exception as e:
-                    self.output_queue.put(("log", f"Error during monitoring: {e}"))
-                    break
-            
-            # Monitoring stopped
-            self.output_queue.put(("log", "\n[Monitoring Stopped]"))
-            self.output_queue.put(("log", "Generating final visualizations..."))
-            self._generate_visualizations_internal()
-            self.output_queue.put(("status", "Monitoring stopped", "green"))
-            self.output_queue.put(("log", "✓ Done! Check the visualizations folder."))
-        
-        self.monitor_thread = threading.Thread(target=monitor_loop, daemon=True)
+        def start_watcher():
+            try:
+                self._initialize_components()
+                startup_count = self.monitor.start_monitoring(
+                    self._process_save_callback,
+                    process_existing=True,
+                    debounce_seconds=1.5
+                )
+                if startup_count > 0:
+                    self.output_queue.put(("log", f"\n✓ Processed {startup_count} save(s) at startup"))
+                self.output_queue.put(("log", f"Startup summary: {self._format_run_stats()}"))
+                self.output_queue.put(("log", "✓ File watcher running"))
+            except Exception as e:
+                self.monitoring = False
+                self.output_queue.put(("status", f"Error: {e}", "red"))
+                self.output_queue.put(("log", f"Error during monitoring startup: {e}"))
+                self.output_queue.put(("monitor_btn", "▶️ Start Monitoring"))
+
+        self.monitor_thread = threading.Thread(target=start_watcher, daemon=True)
         self.monitor_thread.start()
     
     def _stop_monitoring(self):
@@ -357,6 +423,23 @@ class AnalyzerGUI:
         self.monitoring = False
         self.monitor_btn.config(text="▶️ Start Monitoring")
         self._log("\nStopping monitoring...")
+
+        def stop_watcher():
+            try:
+                self._initialize_components()
+                self.output_queue.put(("log", "Draining queued save snapshots before shutdown..."))
+                self.monitor.stop_monitoring()
+                self.output_queue.put(("log", f"Monitoring summary: {self._format_run_stats()}"))
+            except Exception as e:
+                self.output_queue.put(("log", f"Error stopping monitor: {e}"))
+            finally:
+                self.output_queue.put(("log", "\n[Monitoring Stopped]"))
+                self.output_queue.put(("log", "Generating final visualizations..."))
+                self._generate_visualizations_internal()
+                self.output_queue.put(("status", "Monitoring stopped", "green"))
+                self.output_queue.put(("log", "✓ Done! Check the visualizations folder."))
+
+        threading.Thread(target=stop_watcher, daemon=True).start()
     
     def _generate_visualizations(self):
         """Generate visualizations button"""
@@ -392,6 +475,9 @@ class AnalyzerGUI:
         # Generate for each playthrough
         for playthrough_id in playthroughs:
             data = self.monitor.load_playthrough_data(playthrough_id)
+            warning = self._build_low_quality_warning(playthrough_id, data)
+            if warning:
+                self.output_queue.put(("log", warning))
             
             if len(data) < 2:
                 self.output_queue.put(("log", f"Skipping {playthrough_id}: need at least 2 data points"))
@@ -498,6 +584,8 @@ class AnalyzerGUI:
                     self._log(args[0])
                 elif msg_type == "status":
                     self._set_status(args[0], args[1] if len(args) > 1 else "black")
+                elif msg_type == "monitor_btn":
+                    self.monitor_btn.config(text=args[0])
                     
         except queue.Empty:
             pass

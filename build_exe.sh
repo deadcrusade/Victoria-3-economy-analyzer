@@ -29,9 +29,12 @@ echo ""
 # Build the executable
 pyinstaller --clean --onefile --windowed --name "Vic3_Analyzer" \
     --add-data "docs:docs" \
+    --add-data "vendor:vendor" \
     --hidden-import=matplotlib \
     --hidden-import=numpy \
     --hidden-import=PIL \
+    --hidden-import=watchdog \
+    --hidden-import=watchdog.observers.inotify \
     gui.py
 
 if [ $? -ne 0 ]; then

@@ -10,6 +10,7 @@
 2. Extract this folder anywhere
 3. Open command prompt in this folder
 4. Run: pip install -r requirements.txt
+   (installs matplotlib, numpy, watchdog)
 
 ┌─────────────────────────────────────────────────────────────────────────┐
 │ QUICK START (WINDOWS)                                                    │
@@ -28,7 +29,8 @@ Analyze existing saves:
     python main.py <save_dir> --analyze
 
 Real-time monitoring:
-    python main.py <save_dir> --monitor --interval 30
+    python main.py <save_dir> --monitor
+    (continuous file watch, no timer polling, queued snapshot processing)
 
 Generate visualizations:
     python main.py <save_dir> --visualize
@@ -91,8 +93,12 @@ OVERPRODUCTION RATIO:
    python main.py <save_dir> --monitor
 
 2. Play Victoria 3 normally (auto-save will be tracked)
+   - Rotating autosave slots are handled even when filenames are overwritten
+   - Each stable autosave write is queued as its own snapshot
+   - Duplicate writes for the same game day are skipped automatically
 
 3. Press Ctrl+C when done or when crashes occur
+   - Monitor drains queued snapshots before final chart generation
 
 4. Review charts in ./visualizations/
 
@@ -124,8 +130,18 @@ OVERPRODUCTION RATIO:
 "No data to plot"
   → Need 2+ saves, run --analyze first
 
-Parser errors
-  → Save format may have changed, check game version
+Native parser runtime unavailable
+  → Bundled parser runtime is missing/invalid
+  → Reinstall/update analyzer build to restore vendor/librakaly/win-x64/rakaly.dll
+
+Save parse failed
+  → This save file is corrupt/unsupported and was skipped
+  → Monitoring continues for next autosaves
+
+Old charts look flat/wrong
+  → Legacy malformed snapshots may still exist from older runs
+  → Timeline now falls back to filename date, then file mtime
+  → Reset Data for clean historical charts
 
 Nothing happens
   → Check data/ folder for JSON files
@@ -139,10 +155,13 @@ vic3_parser.py      - Parses save files
 data_extractor.py   - Extracts economic data
 save_monitor.py     - Watches for new saves
 visualizer.py       - Creates charts
+vic3_native_parser.py - Bundled native parser bridge (rakaly.dll)
 main.py            - Main program
 examples.py        - Custom usage examples
 
 data/              - Tracked data (JSON)
+data/processed_saves/ - Archived autosaves moved after parsing
+data/queued_saves/ - Internal queued snapshots pending/awaiting processing
 visualizations/    - Generated charts (PNG)
 
 ┌─────────────────────────────────────────────────────────────────────────┐

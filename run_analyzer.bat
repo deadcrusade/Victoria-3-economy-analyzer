@@ -9,9 +9,6 @@ REM ===== CONFIGURATION =====
 REM Edit this line to point to your save games folder
 SET SAVE_DIR=C:\Users\%USERNAME%\Documents\Paradox Interactive\Victoria 3\save games
 
-REM Check interval in seconds (how often to check for new saves)
-SET INTERVAL=60
-
 REM =========================
 
 echo ========================================
@@ -19,7 +16,7 @@ echo Victoria 3 Economic Analyzer
 echo ========================================
 echo.
 echo Save Directory: %SAVE_DIR%
-echo Check Interval: %INTERVAL% seconds
+echo Monitoring Mode: Continuous file watching
 echo.
 
 REM Check if Python is installed

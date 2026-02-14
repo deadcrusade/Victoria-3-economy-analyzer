@@ -7,6 +7,7 @@ Real-time save game monitoring and economic analysis tool for Victoria 3. Perfec
 ## ✨ Features
 
 - 🔍 **Real-time monitoring** - Automatically processes new auto-saves and manual saves
+- 🧭 **Reliable timeline resolution** - Uses in-save game day first, then filename date, then file mtime
 - 📊 **Economic metrics** - Tracks goods prices, production, stockpiles, and building profitability
 - 📈 **Visualizations** - Beautiful matplotlib charts showing trends over time
 - 🔄 **Multi-playthrough** - Compare multiple campaigns side-by-side
@@ -14,6 +15,7 @@ Real-time save game monitoring and economic analysis tool for Victoria 3. Perfec
 - 💰 **Profitability analysis** - Tracks which buildings are losing money
 - 🖥️ **Easy-to-use GUI** - Simple buttons for non-technical users
 - ⌨️ **Powerful CLI** - Full command-line control for advanced users
+- 🧩 **Native Vic3 parser** - Bundled `librakaly` runtime parses standard binary/compressed `.v3` saves
 
 ## 📥 Installation
 
@@ -41,7 +43,8 @@ See [BUILD.md](docs/BUILD.md) for detailed instructions.
 
 **Prerequisites:**
 - Python 3.8 or higher
-- Windows (fully tested) / Linux / macOS (should work)
+- Windows x64 (fully tested for native binary save parsing)
+- Linux/macOS: code runs, but bundled native parser runtime in this phase is Windows-first
 
 **Quick Setup:**
 
@@ -53,7 +56,7 @@ cd vic3_analyzer
 pip install -r requirements.txt
 ```
 
-That's it! Only needs matplotlib and numpy.
+Dependencies include `matplotlib`, `numpy`, and `watchdog` (for continuous file watching).
 
 ## 🚀 Usage
 
@@ -76,7 +79,7 @@ python gui.py
 The graphical interface provides simple buttons for all functions:
 
 - **📊 Analyze Existing Saves** - Process all saves currently in your folder
-- **▶️ Start/Stop Monitoring** - Real-time tracking while you play (checks every 60 seconds)
+- **▶️ Start/Stop Monitoring** - Real-time tracking while you play (continuous file watching)
 - **📈 Generate Charts** - Create visualizations from tracked data
 - **ℹ️ Show Status** - See what playthroughs are being tracked
 - **📁 Open Charts Folder** - Quick access to generated visualizations
@@ -124,12 +127,19 @@ Watch for new saves and process them automatically:
 python main.py "C:\path\to\save games" --monitor
 ```
 
-Check every 30 seconds instead of 60:
-```bash
-python main.py "C:\path\to\save games" --monitor --interval 30
-```
+The watcher is event-driven and handles rotating autosave slots that get overwritten.
+It captures each stable save snapshot into an internal queue and processes them sequentially.
+Run summaries include processed, captured, duplicate-skipped, event-duplicate, unsupported-format, error, and queue-backlog counts.
 
-Press `Ctrl+C` to stop monitoring and generate final visualizations.
+Press `Ctrl+C` to stop monitoring, drain queued snapshots, and generate final visualizations.
+
+### Native Parser Runtime (Important)
+
+Victoria 3 saves are parsed through the bundled native `librakaly` runtime.
+
+- Standard compressed/binary `.v3` autosaves are supported.
+- If runtime files are missing/corrupted, you'll see a clear `parser runtime unavailable` message.
+- If a specific save is corrupt/unsupported, that file is skipped and monitoring continues.
 
 #### Generate Visualizations Only
 Create charts from existing tracked data:
@@ -186,7 +196,7 @@ python main.py "C:\path\to\save games" --status
 
 1. **First playthrough - baseline:**
 ```bash
-python main.py "C:\path\to\saves" --monitor --interval 30
+python main.py "C:\path\to\saves" --monitor
 ```
 
 2. **Play your game** - The analyzer runs in background, processing each auto-save
@@ -218,17 +228,25 @@ python main.py "C:\path\to\saves" --visualize
 vic3_analyzer/
 ├── data/                          # Tracked data (JSON)
 │   ├── campaign_1/
-│   │   ├── data_20240213_143022.json
-│   │   └── data_20240213_150033.json
+│   │   ├── data_20240213_143022_123456.json
+│   │   └── data_20240213_150033_654321.json
 │   └── campaign_2/
 │       └── ...
+│   ├── processed_saves/          # Archived autosaves moved after processing
+│   ├── queued_saves/             # Internal snapshot queue before processing
+│   │   ├── campaign/
+│   │   └── ...
+│   └── monitor_state.json        # Tracks file signatures + seen game days
 ├── visualizations/                # Generated charts
 │   ├── campaign_1_prices_over_time.png
 │   ├── campaign_1_price_crashes.png
 │   ├── campaign_1_overproduction_heatmap.png
 │   ├── campaign_1_building_profitability.png
 │   └── comparison_dashboard.png   # Compares all campaigns
-└── monitor_state.json             # Tracks processed files
+├── vendor/
+│   └── librakaly/
+│       ├── manifest.json          # Pinned native parser runtime metadata
+│       └── win-x64/rakaly.dll     # Bundled Vic3 binary save parser runtime
 ```
 
 ## Interpreting Results
@@ -257,6 +275,21 @@ Double-check your save path. Common mistakes:
 - Missing quotes around path with spaces
 - Wrong username in path
 - Game installed on different drive
+
+### "Native parser runtime unavailable"
+- The bundled native parser files are missing or invalid.
+- Reinstall/update the analyzer build so `vendor/librakaly/win-x64/rakaly.dll` is restored.
+- Monitoring continues, but binary save parsing will fail until runtime is fixed.
+
+### "Save parse failed"
+- A specific save file could not be parsed (corrupt/unsupported payload).
+- That save is skipped; monitoring continues for next autosaves.
+- If this repeats on valid saves, update to the latest analyzer/runtime build.
+
+### Graph timeline looks wrong after old runs
+- Older tracked JSON may have missing game-day and goods data from previously unsupported saves.
+- The analyzer now falls back to filename date, then file mtime for timeline ordering.
+- For clean charts, run **Reset Data** before a fresh tracking session.
 
 ### "No data to plot"
 - Need at least 2 save files to show trends

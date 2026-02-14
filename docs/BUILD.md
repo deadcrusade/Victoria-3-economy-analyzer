@@ -114,8 +114,11 @@ If you want more control:
 pyinstaller --clean --onefile --windowed ^
     --name "Vic3_Analyzer" ^
     --add-data "docs;docs" ^
+    --add-data "vendor;vendor" ^
     --hidden-import=matplotlib ^
     --hidden-import=numpy ^
+    --hidden-import=watchdog ^
+    --hidden-import=watchdog.observers.winapi ^
     gui.py
 ```
 
@@ -125,8 +128,11 @@ pyinstaller --clean --onefile --windowed ^
 pyinstaller --clean --onefile --windowed \
     --name "Vic3_Analyzer" \
     --add-data "docs:docs" \
+    --add-data "vendor:vendor" \
     --hidden-import=matplotlib \
     --hidden-import=numpy \
+    --hidden-import=watchdog \
+    --hidden-import=watchdog.observers.inotify \
     gui.py
 ```
 
@@ -135,7 +141,7 @@ pyinstaller --clean --onefile --windowed \
 - `--onefile` - Bundle everything into single executable
 - `--windowed` - No console window (GUI only)
 - `--name` - Name of the output file
-- `--add-data` - Include docs folder
+- `--add-data` - Include docs and bundled native parser runtime
 - `--hidden-import` - Force include these modules
 - `--clean` - Clean cache before building
 - `--icon` - Custom icon (optional, we don't have one)

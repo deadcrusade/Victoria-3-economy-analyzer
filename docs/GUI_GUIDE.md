@@ -40,6 +40,14 @@ The GUI tries to auto-detect your Victoria 3 save folder, but if it's wrong:
 
 **Tip:** This setting is remembered between sessions!
 
+### 2. Native Parser Runtime
+
+This build includes a bundled native parser (`librakaly`) for standard Victoria 3 binary saves.
+
+- If output shows `Native parser runtime unavailable`, reinstall/update the analyzer build.
+- If output shows `Save parse failed`, that specific save is skipped and monitoring continues.
+- If old data looks malformed from earlier versions, click **Reset Data** and start fresh.
+
 ## Main Functions
 
 ### 📊 Analyze Existing Saves
@@ -79,9 +87,13 @@ The GUI tries to auto-detect your Victoria 3 save folder, but if it's wrong:
 6. Visualizations are generated automatically
 
 **How it works:**
-- Checks for new saves every 60 seconds
-- Processes them automatically
+- Watches save files continuously (event-driven)
+- Processes overwritten autosave slots automatically
+- Captures each stable save write into an internal queue first
+- Parses queued snapshots sequentially (no dropped slots while busy)
+- Deduplicates repeated writes for the same in-game day
 - You can leave it running in the background
+- Shows run summaries (processed, captured, duplicates, unsupported, errors, queue backlog)
 
 **Tip:** Set Victoria 3 to auto-save monthly or quarterly for best results!
 
@@ -171,6 +183,7 @@ Processing: campaign_autosave_1871_1_1.v3
   Overproduction issues: 11
 ------------------------------------------------------------
 ✓ Processed 2 save files
+Run summary: Processed 2, captured 2, skipped duplicates 1, event duplicates 0, unsupported format 0, errors 0, queue backlog events 0 processing 0
 Generating visualizations...
 ✓ All visualizations generated!
 ```
@@ -224,6 +237,18 @@ Generating visualizations...
 **Problem:** Not enough data  
 **Solution:** Need at least 2-3 saves for meaningful trends
 
+### "Native parser runtime unavailable"
+**Problem:** Bundled parser files are missing/invalid  
+**Solution:** Reinstall/update analyzer build (restores `vendor/librakaly/win-x64/rakaly.dll`)
+
+### "Save parse failed"
+**Problem:** A specific save file is corrupt/unsupported  
+**Solution:** Save is skipped automatically; keep monitoring and check next autosave
+
+### Charts still look flat after many saves
+**Problem:** Older malformed snapshots may still be in `data/`  
+**Solution:** Use **Reset Data** and re-track with current parser
+
 ---
 
 ## Where Files Are Stored
@@ -233,12 +258,14 @@ vic3_analyzer/
 ├── data/                      # Tracked data (JSON)
 │   ├── campaign_1/
 │   ├── campaign_2/
+│   ├── processed_saves/       # Archived autosaves moved after parsing
+│   ├── queued_saves/          # Internal queued save snapshots
 │   └── ...
 ├── visualizations/            # Generated charts (PNG)
 │   ├── campaign_1_prices_over_time.png
 │   ├── campaign_1_price_crashes.png
 │   └── ...
-└── monitor_state.json         # What's been processed
+└── data/monitor_state.json    # File signatures + seen game days
 ```
 
 **You can delete these folders to start completely fresh!**

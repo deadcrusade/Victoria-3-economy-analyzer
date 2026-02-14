@@ -1,0 +1,10 @@
+Third-Party Component: librakaly
+Source: https://github.com/rakaly/librakaly
+Version: 0.12.5
+
+This project vendors the Windows x64 runtime binary (rakaly.dll) from the official
+librakaly release artifacts for Victoria 3 binary save parsing.
+
+License:
+Refer to the upstream repository for the authoritative license text and terms:
+https://github.com/rakaly/librakaly

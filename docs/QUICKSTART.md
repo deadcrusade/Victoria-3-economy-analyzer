@@ -33,6 +33,10 @@ pip install -r requirements.txt
 
 That's it! Installation complete.
 
+`requirements.txt` includes `matplotlib`, `numpy`, and `watchdog` (continuous file watching).
+
+Binary Victoria 3 `.v3` saves are parsed through bundled native runtime (`vendor/librakaly/win-x64/rakaly.dll`).
+
 ---
 
 ## Using the Analyzer
@@ -116,7 +120,12 @@ After analysis, you'll have charts showing:
 
 1. **Start monitoring** before playing
 2. **Play Victoria 3** with your mod
+   - Monitoring is continuous and event-driven (no timer polling)
+   - Overwritten autosave slots are still captured as new data when game day changes
+   - New saves are queued as immutable snapshots while parsing is busy
+   - Duplicate filesystem events are deduped per playthrough/game day
 3. **Stop monitoring** when done
+   - Queued snapshots are drained before final visualization generation
 4. **Review charts** - find problems
 5. **Make mod changes**
 6. **Repeat** - compare results!
@@ -139,6 +148,18 @@ After analysis, you'll have charts showing:
 ### Charts are empty
 → Need at least 2-3 save files  
 → Play the game longer and let auto-saves accumulate
+
+### "Native parser runtime unavailable"
+→ Bundled parser runtime is missing/invalid  
+→ Reinstall/update analyzer build so `vendor/librakaly/win-x64/rakaly.dll` is restored
+
+### "Save parse failed"
+→ A specific save is corrupt or unsupported  
+→ That save is skipped; monitoring continues for next autosave
+
+### Charts still look wrong after fixes
+→ Older malformed JSON snapshots may still exist from previous runs  
+→ Use Reset Data, then re-track with current parser build
 
 ---
 
